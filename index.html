@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technology Listening Quiz (Audio Only)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .score-display {
+            font-size: 32px;
+            font-weight: 900;
+        }
+        .section-header {
+            border-left: 6px solid #10b981; /* Teal border for Tech theme */
+        }
+        input[type="radio"]:checked + label {
+            border-color: #10b981;
+            background-color: #e0f2f1;
+        }
+        .audio-container {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(16, 185, 129, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: white;
+            z-index: 10;
+            border-radius: 0.5rem;
+            transition: opacity 0.3s ease;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto bg-white p-6 md:p-10 rounded-xl shadow-2xl space-y-8">
+
+        <!-- Header and Score Display -->
+        <header class="text-center mb-8 border-b pb-4">
+            <h1 class="text-3xl font-bold text-gray-800">Technology Today and Tomorrow (Audio Only)</h1>
+            <p class="text-gray-500 mt-1">Listen to the custom generated audio about modern tech and future trends.</p>
+            <div id="score-container" class="mt-4 p-3 bg-teal-50 rounded-lg hidden">
+                <span id="score-text" class="text-teal-700 score-display">
+                    0 / 15
+                </span>
+            </div>
+        </header>
+
+        <!-- Audio Player with Loading Overlay -->
+        <div class="audio-container">
+            <h2 class="text-lg font-semibold text-gray-700 mb-2 text-center">Custom Generated Audio Source</h2>
+
+            <!-- Loading Overlay Structure START -->
+            <div id="loading-overlay" class="loading-overlay h-20 rounded-lg shadow-lg">
+                <div id="loading-content">
+                    <p class="text-xl font-bold mb-4">Generating Audio Track...</p>
+                    <div class="spinner mb-4"></div>
+                </div>
+                <button type="button" id="start-button" class="px-6 py-2 bg-white text-teal-600 font-bold rounded-full shadow-lg hover:bg-gray-100 transition duration-300 hidden">
+                    Generate Audio & Start
+                </button>
+            </div>
+            <!-- Loading Overlay Structure END -->
+
+            <audio id="tts-audio" controls class="w-full rounded-lg shadow-lg hidden">
+                Your browser does not support the audio element.
+            </audio>
+            <p id="error-message" class="text-center text-red-500 mt-2 hidden">Error generating audio.</p>
+        </div>
+        
+        <p class="text-sm text-center text-gray-400 mt-2 mb-8">This audio is generated using Text-to-Speech (TTS) to ensure a script-free listening experience.</p>
+
+
+        <form id="listening-quiz-form" class="space-y-10">
+
+            <!-- Combined Section: General Comprehension, Vocabulary & Key Information -->
+            <div class="section-container">
+                <div class="section-header px-4 py-2 bg-gray-50 rounded-r-lg shadow-sm mb-4">
+                    <h2 class="text-xl font-semibold text-gray-700">Listening Comprehension (15 Questions)</h2>
+                    <p class="text-sm text-gray-500">Listen carefully and answer based on the generated audio content.</p>
+                </div>
+                <!-- Questions will be dynamically inserted here -->
+            </div>
+
+
+            <!-- Submission Button -->
+            <div class="flex justify-center pt-8">
+                <button type="submit" id="submit-button" class="px-8 py-3 bg-teal-600 text-white font-bold text-lg rounded-full shadow-lg hover:bg-teal-700 transition duration-300 transform hover:scale-105">
+                    Submit Answers
+                </button>
+            </div>
+        </form>
+
+    </div>
+
+    <script>
+        // --- TTS and Audio Utility Functions ---
+
+        /** Converts base64 PCM data to an ArrayBuffer. */
+        const base64ToArrayBuffer = (base64) => {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        };
+
+        /** Converts raw PCM data buffer to a playable WAV Blob. */
+        const pcmToWav = (pcm16, sampleRate) => {
+            const numChannels = 1;
+            const bytesPerSample = 2; // 16-bit PCM
+            const byteRate = sampleRate * numChannels * bytesPerSample;
+            const blockAlign = numChannels * bytesPerSample;
+
+            const buffer = new ArrayBuffer(44 + pcm16.length * bytesPerSample);
+            const view = new DataView(buffer);
+
+            // RIFF chunk descriptor
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcm16.length * bytesPerSample, true);
+            writeString(view, 8, 'WAVE');
+
+            // FMT sub-chunk
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM format
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, 16, true); // 16 bits per sample
+
+            // Data sub-chunk
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcm16.length * bytesPerSample, true);
+
+            // Write PCM data
+            for (let i = 0; i < pcm16.length; i++) {
+                view.setInt16(44 + i * bytesPerSample, pcm16[i], true);
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        };
+
+        /** Helper function to write strings to DataView */
+        const writeString = (view, offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+
+        // --- Core Application Logic ---
+
+        const TTS_SCRIPT = "Welcome to a quick look at how technology is shaping our world today. We live in an 'always-on culture,' where the smartphone has become almost universal. This constant connection offers incredible speed for information access and facilitates global collaboration. However, this reliance brings challenges. Many people struggle to disconnect from their screens, and the constant stream of notifications can create a sense of digital dependence. Experts often recommend a digital detox to maintain a healthy balance. Looking ahead, the future of tech involves the Internet of Things, connecting devices around the home to make tasks easier. Artificial intelligence is rapidly transforming sectors like healthcare and transportation, with the promise of driverless cars. It's an exciting, yet swift pace of change, but we must prioritize protecting our personal data to ensure we make informed decisions.";
+
+        // Data Structure for 15 questions, matching the new TTS_SCRIPT content
+        const questionsData = [
+            // --- General Comprehension & T/F ---
+            { id: 1, type: 'tf', text: "The segment starts by focusing on social media's positive effects.", answer: 'False', section: 1 },
+            { id: 2, type: 'tf', text: "The audio mentions that smartphones are now almost universally used.", answer: 'True', section: 1 },
+            { id: 3, type: 'tf', text: "It is suggested that constant connectivity has only positive consequences.", answer: 'False', section: 1 },
+            { id: 4, type: 'mc', text: "What term describes the state of being constantly available online?", options: ['Digital break', 'Always-on culture', 'Tech advancement'], answer: 'Always-on culture', section: 1 },
+            { id: 5, type: 'mc', text: "What activity is recommended to manage device reliance?", options: ['Digital detox', 'Tech collaboration', 'Screen time increase'], answer: 'Digital detox', section: 1 },
+            
+            // --- Fill in the Blanks (FITB) matching the exact words from the script ---
+            { id: 6, type: 'fitb', text: "The smartphone has become almost [universal].", answer: 'universal', section: 1 },
+            { id: 7, type: 'fitb', text: "This connection facilitates global [collaboration].", answer: 'collaboration', section: 1 },
+            { id: 8, type: 'fitb', text: "Many people struggle to [disconnect] from their screens.", answer: 'disconnect', section: 1 },
+            { id: 9, type: 'fitb', text: "The notifications can create a sense of digital [dependence].", answer: 'dependence', section: 1 },
+            { id: 10, type: 'fitb', text: "Experts suggest maintaining a healthy digital [balance].", answer: 'balance', section: 1 },
+            { id: 11, type: 'fitb', text: "The Internet of [Things] will connect devices.", answer: 'Things', section: 1 },
+            { id: 12, type: 'fitb', text: "AI is transforming sectors like [healthcare].", answer: 'healthcare', section: 1 },
+            { id: 13, type: 'fitb', text: "Future transportation may rely on [driverless] cars.", answer: 'driverless', section: 1 },
+            { id: 14, type: 'fitb', text: "We must prioritize protecting our personal [data].", answer: 'data', section: 1 },
+            { id: 15, type: 'fitb', text: "We can access information with incredible [speed].", answer: 'speed', section: 1 },
+        ];
+
+
+        const form = document.getElementById('listening-quiz-form');
+        const scoreContainer = document.getElementById('score-container');
+        const scoreText = document.getElementById('score-text');
+        const submitButton = document.getElementById('submit-button');
+        const ttsAudio = document.getElementById('tts-audio');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingContent = document.getElementById('loading-content');
+        const startButton = document.getElementById('start-button');
+        const errorMessage = document.getElementById('error-message');
+
+        const totalQuestions = questionsData.length;
+        let isSubmitted = false;
+        let isAudioGenerated = false;
+
+
+        // Function to fetch TTS audio data
+        const generateAndPlayAudio = async () => {
+            loadingContent.innerHTML = '<p class="text-xl font-bold mb-4">Generating Audio Track...</p><div class="spinner mb-4"></div>';
+            startButton.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: TTS_SCRIPT }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: { voiceName: "Zephyr" } // Clear, bright voice
+                        }
+                    }
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+            // Exponential backoff retry logic
+            const maxRetries = 3;
+            let currentRetry = 0;
+
+            while (currentRetry < maxRetries) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    const audioData = part?.inlineData?.data;
+                    const mimeType = part?.inlineData?.mimeType;
+
+                    if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+                        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+                        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000; // Default to 24000 if rate is missing (standard)
+
+                        const pcmData = base64ToArrayBuffer(audioData);
+                        const pcm16 = new Int16Array(pcmData);
+                        const wavBlob = pcmToWav(pcm16, sampleRate);
+                        const audioUrl = URL.createObjectURL(wavBlob);
+
+                        // Set audio source and show player
+                        ttsAudio.src = audioUrl;
+                        ttsAudio.classList.remove('hidden');
+                        loadingOverlay.style.opacity = '0';
+                        setTimeout(() => {
+                            loadingOverlay.classList.add('hidden');
+                        }, 300);
+
+                        isAudioGenerated = true;
+                        // ttsAudio.play(); // Auto-play might be restricted, user can manually press play.
+                        break; // Success, exit retry loop
+                    } else {
+                        throw new Error("Invalid TTS response structure or missing audio data.");
+                    }
+                } catch (error) {
+                    console.error("TTS generation failed (Attempt " + (currentRetry + 1) + "):", error);
+                    currentRetry++;
+                    if (currentRetry < maxRetries) {
+                        const delay = Math.pow(2, currentRetry) * 1000; // 2s, 4s, 8s
+                        loadingContent.innerHTML = `<p class="text-xl font-bold mb-4 text-red-100">Retrying audio generation in ${delay / 1000}s...</p><div class="spinner mb-4"></div>`;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        loadingContent.innerHTML = '<p class="text-xl font-bold mb-4 text-red-100">Failed to generate audio.</p>';
+                        startButton.textContent = 'Try Again';
+                        startButton.classList.remove('hidden');
+                        errorMessage.classList.remove('hidden');
+                    }
+                }
+            }
+        };
+
+        // Utility to normalize answers (case-insensitive, trimmed)
+        const normalizeAnswer = (answer) => {
+            if (answer === null || answer === undefined) return '';
+            let normalized = String(answer).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            return normalized;
+        };
+
+        // Function to create the HTML for a single question
+        const createQuestionElement = (q) => {
+            const questionDiv = document.createElement('div');
+            questionDiv.id = `q-${q.id}`;
+            questionDiv.className = 'p-4 border border-gray-200 rounded-lg mb-4 bg-white shadow-sm transition duration-150';
+
+            let inputHtml = '';
+            let displayQuestionText = q.text;
+
+            if (q.type === 'fitb') {
+                // For Fill-in-the-Blanks, find the answer word in the text and replace it with blanks.
+                displayQuestionText = displayQuestionText.replace(/\[[^\]]+\]/, '_______');
+
+                inputHtml = `
+                    <input type="text" name="answer-${q.id}" class="w-full mt-2 p-2 border border-gray-300 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm" placeholder="Write your missing word here (e.g., universal)">
+                `;
+            } else if (q.type === 'tf') {
+                inputHtml = `
+                    <div class="flex space-x-4 mt-3">
+                        <input type="radio" id="q${q.id}-t" name="answer-${q.id}" value="True" class="hidden">
+                        <label for="q${q.id}-t" class="cursor-pointer px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-full transition duration-150 hover:border-teal-500">True</label>
+                        <input type="radio" id="q${q.id}-f" name="answer-${q.id}" value="False" class="hidden">
+                        <label for="q${q.id}-f" class="cursor-pointer px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-full transition duration-150 hover:border-teal-500">False</label>
+                    </div>
+                `;
+            } else if (q.type === 'mc') {
+                inputHtml = `
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                        ${q.options.map((opt, index) => `
+                            <div>
+                                <input type="radio" id="q${q.id}-${index}" name="answer-${q.id}" value="${opt}" class="hidden">
+                                <label for="q${q.id}-${index}" class="block cursor-pointer p-3 border-2 border-gray-300 text-gray-700 rounded-lg transition duration-150 text-sm text-center hover:border-teal-500">${opt}</label>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            questionDiv.innerHTML = `
+                <div class="flex items-start">
+                    <span class="font-bold text-lg text-teal-600 mr-3">${q.id}.</span>
+                    <div class="flex-grow">
+                        <p class="text-gray-800 font-medium mb-2">${displayQuestionText}</p>
+                        ${inputHtml}
+                    </div>
+                    <span id="feedback-${q.id}" class="text-xl ml-4 pt-1 opacity-0 transition duration-300"></span>
+                </div>
+                <p id="correct-answer-${q.id}" class="text-sm italic mt-2 hidden"></p>
+            `;
+
+            return questionDiv;
+        };
+
+        // Function to render all questions into the form
+        const renderQuestions = () => {
+            const container = document.querySelector('.section-container');
+            if (container) {
+                // Clear any existing content except the header
+                const existingQuestions = container.querySelectorAll('.p-4.border.border-gray-200');
+                existingQuestions.forEach(q => q.remove());
+
+                questionsData.forEach(q => {
+                    container.appendChild(createQuestionElement(q));
+                });
+            }
+        };
+
+        // Grading logic
+        const checkAnswers = (event) => {
+            event.preventDefault();
+            if (isSubmitted) return; 
+
+            let correctCount = 0;
+
+            questionsData.forEach(q => {
+                const questionElement = document.getElementById(`q-${q.id}`);
+                const feedbackSpan = document.getElementById(`feedback-${q.id}`);
+                const correctAnswerP = document.getElementById(`correct-answer-${q.id}`);
+
+                let userAnswer = null;
+                const inputName = `answer-${q.id}`;
+
+                if (q.type === 'tf' || q.type === 'mc') {
+                    const selectedRadio = form.querySelector(`input[name="${inputName}"]:checked`);
+                    userAnswer = selectedRadio ? selectedRadio.value : null;
+                } else if (q.type === 'fitb') {
+                    const textInput = form.querySelector(`input[name="${inputName}"]`);
+                    userAnswer = textInput ? textInput.value : null;
+                }
+
+                const isAnswered = userAnswer !== null && userAnswer.trim() !== '';
+                const normalizedUserAnswer = normalizeAnswer(userAnswer);
+                const normalizedCorrectAnswer = normalizeAnswer(q.answer);
+                const isCorrect = isAnswered && normalizedUserAnswer === normalizedCorrectAnswer;
+
+                // 1. Update Score and Feedback
+                if (isCorrect) {
+                    correctCount++;
+                    feedbackSpan.innerHTML = '<span class="text-green-600">✔</span>'; 
+                } else {
+                    feedbackSpan.innerHTML = '<span class="text-red-600">✘</span>'; 
+                }
+
+                // 2. Show correct answer (if wrong or if they skipped)
+                if (!isCorrect) {
+                    correctAnswerP.innerHTML = `<strong>Correct Answer:</strong> ${q.answer}`;
+                    correctAnswerP.classList.remove('hidden');
+                    correctAnswerP.classList.add('text-red-500');
+                } else {
+                    correctAnswerP.classList.add('hidden');
+                }
+
+                // 3. Highlight the user's selected/entered answer and disable inputs
+                const inputs = questionElement.querySelectorAll('input');
+                inputs.forEach(input => input.disabled = true);
+
+                if (userAnswer !== null && isAnswered) {
+                    if (q.type === 'tf' || q.type === 'mc') {
+                        const selectedRadio = form.querySelector(`input[name="${inputName}"][value="${userAnswer}"]`);
+                        if (selectedRadio) {
+                            const label = selectedRadio.nextElementSibling;
+                            if (label) {
+                                label.classList.add(isCorrect ? 'bg-green-100' : 'bg-red-100', 'border-4');
+                                label.classList.remove('border-gray-300', 'hover:border-teal-500');
+                            }
+                        }
+                    } else if (q.type === 'fitb') {
+                        const textInput = form.querySelector(`input[name="${inputName}"]`);
+                        if (textInput) {
+                            textInput.classList.add(isCorrect ? 'bg-green-50' : 'bg-red-50', isCorrect ? 'border-green-500' : 'border-red-500');
+                        }
+                    }
+                }
+
+                feedbackSpan.classList.remove('opacity-0');
+            });
+
+            // 5. Update global score
+            scoreText.textContent = `${correctCount} / ${totalQuestions}`;
+            scoreContainer.classList.remove('hidden');
+
+            // 6. Final UI changes
+            submitButton.disabled = true;
+            submitButton.textContent = 'Results Shown';
+            submitButton.classList.remove('bg-teal-600', 'hover:bg-teal-700', 'transform', 'hover:scale-105');
+            submitButton.classList.add('bg-gray-400');
+            isSubmitted = true;
+        };
+
+        // Initialize the quiz
+        window.onload = () => {
+            renderQuestions();
+            form.addEventListener('submit', checkAnswers);
+            
+            // Initial state: show the start button
+            loadingContent.innerHTML = '<p class="text-xl font-bold mb-4">Ready to start the Audio Test?</p>';
+            startButton.classList.remove('hidden');
+            loadingOverlay.classList.remove('hidden');
+            
+            startButton.addEventListener('click', generateAndPlayAudio);
+
+            // Immediately start audio generation for a smoother experience 
+            // but keep the overlay until success or error (removed for initial start button)
+            // generateAndPlayAudio();
+
+            console.log("Quiz initialized. Total questions: 15. Audio generation will start when the user clicks 'Generate Audio & Start'.");
+        };
+    </script>
+
+</body>
+</html>
